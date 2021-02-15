@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes" />
 
-    <script type="text/javascript" src="../dist/pinch-zoom.umd.js"></script>
+    <script type="text/javascript" src="pinch-zoom.umd.min.js"></script>
 </head>
 <body>
 
@@ -24,8 +24,153 @@
     </div>
 
     <script type="text/javascript">
-      var el = document.querySelector('div.pinch-zoom');
-      new PinchZoom.default(el, {});
+
+var node = document.querySelector("div.pinch-zoom");
+var pz = new PinchZoom.default(node, {
+    minZoom: 1,
+    maxZoom: 3,
+    draggableUnzoomed: true,
+    use2d: false
+});
+var gestureStartScale = 0;
+var lastScale = 1;
+var lastCenter = false;
+var wheelId = null;
+var wheelDelay = 300;
+
+function getMouseCenter(container, e) {
+    var rect = container.getBoundingClientRect();
+    var scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+    var scrollLeft = document.documentElement.scrollLeft || document.body.scrollLeft;
+    var posTop = rect.top + scrollTop;
+    var posLeft = rect.left + scrollLeft;
+
+    return {
+        x: e.pageX - posLeft,
+        y: e.pageY - posTop
+    };
+}
+
+function onWindowWheel(e) {
+    e.preventDefault();
+
+    if (!pz.enabled) {
+        return;
+    }
+
+    if (e.ctrlKey) {
+        var newScale = lastScale - e.deltaY * 0.01;
+        var center = getMouseCenter(pz.container, e);
+        var change = newScale / lastScale;
+
+        if (change > 2 || change < 0) {
+            // ignore spurious wheel events
+            lastScale = 1;
+            return;
+        }
+
+        if (!wheelId) {
+            lastCenter = false;
+            pz.stopAnimation();
+        }
+
+        pz.scale(change, center);
+        pz.drag(center, center);
+        pz.update();
+
+        lastScale = newScale;
+        lastCenter = center;
+
+        if (wheelId) {
+            clearTimeout(wheelId);
+        }
+
+        wheelId = setTimeout(function() {
+            pz.end();
+            wheelId = null;
+        }, wheelDelay);
+    }
+    else {
+        if (pz.canDrag()) {
+            var newOffset = {
+                x: pz.offset.x + (e.deltaX * 2),
+                y: pz.offset.y + (e.deltaY * 2)
+            };
+
+            pz.stopAnimation();
+            pz.offset = pz.sanitizeOffset(newOffset);
+            pz.end();
+        }
+    }
+}
+
+function onWindowGestureStart(e) {
+    e.preventDefault();
+
+    if (!pz.enabled) {
+        return;
+    }
+
+    gestureStartScale = lastScale;
+    lastCenter = false;
+
+    pz.stopAnimation();
+}
+
+function onWindowGestureChange(e) {
+    e.preventDefault();
+
+    if (!pz.enabled) {
+        return;
+    }
+
+    var newScale = gestureStartScale * e.scale;
+    var center = getMouseCenter(pz.container, e);
+
+    pz.scale(newScale / lastScale, center);
+    pz.drag(center, lastCenter);
+    pz.update();
+
+    lastCenter = center;
+    lastScale = newScale;
+}
+
+function onWindowGestureEnd(e) {
+    e.preventDefault();
+
+    if (!pz.enabled) {
+        return;
+    }
+
+    pz.end();
+}
+
+function onElementDoubleClick(e) {
+    e.preventDefault();
+
+    if (!pz.enabled) {
+        return;
+    }
+
+    var newScale = (lastScale > 1) ? 1 : pz.options.tapZoomFactor;
+    var startZoomFactor = pz.zoomFactor;
+    var zoomFactor = pz.zoomFactor > 1 ? 1 : pz.options.tapZoomFactor;
+    var center = (startZoomFactor > zoomFactor) ? pz.getCurrentZoomCenter() : getMouseCenter(pz.container, e);
+    var updateProgress = function (progress) {
+        this.scaleTo(startZoomFactor + progress * (zoomFactor - startZoomFactor), center);
+    }.bind(pz);
+
+    pz.animate(pz.options.animationDuration, updateProgress, pz.swing);
+
+    lastScale = newScale;
+}
+
+window.addEventListener("wheel", onWindowWheel, { passive: false });
+node.addEventListener("gesturestart", onWindowGestureStart);
+node.addEventListener("gesturechange", onWindowGestureChange);
+node.addEventListener("gestureend", onWindowGestureEnd);
+node.addEventListener("dblclick", onElementDoubleClick, { passive: false });
+
     </script>
 
 </body>
